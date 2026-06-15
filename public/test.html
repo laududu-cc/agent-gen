@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能体对话 - 智戎</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/highlight.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #09090b;
+            --panel-bg: rgba(24, 24, 27, 0.6);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #a1a1aa;
+            --accent: #0d9488;
+            --accent-hover: #0f766e;
+            --msg-user: #27272a;
+            --msg-sys: rgba(13, 148, 136, 0.1);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; overflow: hidden; position: relative; }
+
+        .ambient-bg { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; z-index: -1; }
+        .blob { position: absolute; filter: blur(100px); opacity: 0.5; border-radius: 50%; animation: float 10s infinite ease-in-out alternate; }
+        .blob-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 70%); }
+        .blob-2 { bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: radial-gradient(circle, rgba(16,185,129,0.1) 0%, transparent 70%); animation-delay: -5s; }
+        @keyframes float { 0% { transform: translate(0, 0); } 100% { transform: translate(5%, 5%); } }
+
+        /* Sidebar for Sessions */
+        .sidebar {
+            width: 260px;
+            background: rgba(24, 24, 27, 0.4);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            z-index: 100;
+        }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border-color); }
+        .back-btn { display: flex; align-items: center; gap: 8px; color: var(--text-muted); text-decoration: none; font-size: 14px; margin-bottom: 16px; transition: color 0.2s; }
+        .back-btn:hover { color: var(--text-main); }
+        .new-chat-btn {
+            width: 100%; padding: 10px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color);
+            border-radius: 8px; color: var(--text-main); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; transition: background 0.2s;
+        }
+        .new-chat-btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+        .session-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+        .session-item {
+            padding: 12px; border-radius: 8px; cursor: pointer; transition: all 0.2s;
+            border: 1px solid transparent; display: flex; flex-direction: column; gap: 4px;
+            position: relative;
+        }
+        .session-item:hover { background: rgba(255, 255, 255, 0.05); }
+        .session-item.active { background: rgba(13, 148, 136, 0.15); border-color: rgba(13, 148, 136, 0.3); }
+        .session-more-btn {
+            position: absolute; right: 8px; top: 12px;
+            background: transparent; border: none; color: var(--text-muted); cursor: pointer;
+            opacity: 0; transition: opacity 0.2s, background 0.2s;
+            display: flex; align-items: center; justify-content: center;
+            padding: 4px; border-radius: 4px;
+        }
+        .session-item:hover .session-more-btn { opacity: 1; }
+        .session-more-btn:hover { background: rgba(255, 255, 255, 0.1); color: var(--text-main); }
+        
+        .session-dropdown {
+            position: fixed; background: var(--panel-bg); border: 1px solid var(--border-color);
+            border-radius: 8px; backdrop-filter: blur(16px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); z-index: 1000;
+            display: none; flex-direction: column; min-width: 120px;
+            overflow: hidden;
+        }
+        .session-dropdown.show { display: flex; }
+        .dropdown-item {
+            padding: 10px 16px; font-size: 13px; color: var(--text-main); cursor: pointer;
+            display: flex; align-items: center; gap: 8px; transition: background 0.2s;
+        }
+        .dropdown-item:hover { background: rgba(255, 255, 255, 0.1); }
+        .dropdown-item.danger { color: #ef4444; }
+        .dropdown-item.danger:hover { background: rgba(239, 68, 68, 0.1); }
+
+        /* Main Area */
+        .main-content { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; }
+        
+        .header { padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); background: rgba(9, 9, 11, 0.4); backdrop-filter: blur(12px); flex-shrink: 0; }
+        .agent-info { display: flex; align-items: center; gap: 12px; }
+        .agent-name { font-weight: 600; font-size: 16px; }
+        .agent-badge { font-size: 12px; padding: 4px 8px; border-radius: 12px; background: rgba(13, 148, 136, 0.2); color: #2dd4bf; border: 1px solid rgba(13, 148, 136, 0.3); }
+
+        .chat-container { flex: 1; overflow-y: auto; padding: 24px 0; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; min-height: 0; align-items: center; }
+        .chat-container::-webkit-scrollbar { width: 6px; }
+        .chat-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+
+        .message-wrapper { width: 100%; max-width: 800px; padding: 0 20px; display: flex; flex-direction: column; gap: 8px; opacity: 0; transform: translateY(10px); animation: fadeIn 0.4s forwards; }
+        @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+
+        .message { max-width: 85%; padding: 16px 20px; border-radius: 16px; font-size: 15px; line-height: 1.6; }
+        .msg-user { align-self: flex-end; background: var(--msg-user); border-bottom-right-radius: 4px; }
+        .msg-sys { align-self: flex-start; background: var(--msg-sys); border: 1px solid rgba(13, 148, 136, 0.2); border-bottom-left-radius: 4px; }
+        
+        /* Markdown */
+        .msg-sys pre { background: #1e1e1e; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 10px 0; }
+        .msg-sys code { font-family: monospace; font-size: 13px; }
+        .msg-sys p { margin-bottom: 8px; }
+        .msg-sys p:last-child { margin-bottom: 0; }
+        .msg-sys ul, .msg-sys ol { margin-left: 20px; margin-bottom: 8px; }
+
+        .input-area { padding: 24px 0; background: linear-gradient(to top, var(--bg-color) 80%, transparent); flex-shrink: 0; display: flex; justify-content: center; }
+        .input-box { width: 100%; max-width: 800px; margin: 0 20px; position: relative; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 24px; padding: 8px 16px; display: flex; align-items: flex-end; backdrop-filter: blur(12px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
+        .input-box:focus-within { border-color: rgba(13, 148, 136, 0.5); }
+        .input-box textarea { flex: 1; background: transparent; border: none; color: var(--text-main); font-size: 16px; padding: 12px 0; resize: none; outline: none; min-height: 48px; max-height: 150px; line-height: 1.5; }
+        .input-box textarea::placeholder { color: var(--text-muted); }
+        .send-btn { background: var(--accent); color: white; border: none; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-bottom: 6px; }
+        .send-btn:hover { background: var(--accent-hover); }
+
+        .loading-dots { display: flex; gap: 4px; padding: 16px 20px; }
+        .dot { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+
+        /* Modal */
+        .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; }
+        .modal-content { background:var(--panel-bg); border:1px solid var(--border-color); padding:24px; border-radius:12px; width:400px; backdrop-filter:blur(16px); }
+        .agent-select-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+        .agent-select-item { padding: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+        .agent-select-item:hover { background: rgba(13, 148, 136, 0.2); border-color: rgba(13, 148, 136, 0.4); }
+
+        .btn { padding: 8px 16px; border-radius: 6px; font-size: 14px; cursor: pointer; transition: all 0.2s; border: none; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-secondary { background: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.05); }
+
+        .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text-muted); }
+        .empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.5; }
+    </style>
+</head>
+<body>
+
+    <div class="ambient-bg">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <a href="manage.html" class="back-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                返回管理中心
+            </a>
+            <button class="new-chat-btn" onclick="openAgentModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                新建对话
+            </button>
+        </div>
+        <div class="session-list" id="sessionList">
+            <!-- Sessions injected here -->
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="header" id="chatHeader" style="display: none;">
+            <div class="agent-info">
+                <div class="agent-name" id="agentName">加载中...</div>
+                <div class="agent-badge" id="agentBadge">普通型</div>
+            </div>
+        </div>
+
+        <div class="empty-state" id="emptyState">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <p>在左侧选择会话，或新建对话</p>
+        </div>
+
+        <div class="chat-container" id="chatArea" style="display: none;">
+        </div>
+
+        <div class="input-area" id="inputArea" style="display: none;">
+            <div class="input-box">
+                <textarea id="userInput" placeholder="输入你想说的话..." rows="1" oninput="autoResize(this)" onkeypress="handleKeyPress(event)"></textarea>
+                <button class="send-btn" onclick="sendMessage()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agent Select Modal -->
+    <div class="modal-overlay" id="agentModal" onclick="if(event.target===this) closeAgentModal()">
+        <div class="modal-content">
+            <h3>选择要对话的智能体</h3>
+            <div class="agent-select-list" id="agentSelectList">
+                <!-- Agents injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div class="modal-overlay" id="renameModal" onclick="if(event.target===this) closeRenameModal()">
+        <div class="modal-content">
+            <h3 style="margin-bottom:16px;">重命名会话</h3>
+            <div style="margin-bottom:20px;">
+                <input type="text" id="renameInput" style="width:100%; padding:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color); border-radius:6px; color:white; outline:none;" onkeypress="if(event.key==='Enter') saveRename()">
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:12px;">
+                <button class="btn btn-secondary" onclick="closeRenameModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveRename()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Modal -->
+    <div class="modal-overlay" id="confirmModal" onclick="if(event.target===this) closeConfirmModal()">
+        <div class="modal-content" style="width: 340px;">
+            <h3 style="margin-bottom:12px; color:#ef4444;">删除对话</h3>
+            <p style="margin-bottom:20px; color:var(--text-muted); font-size:14px;">确定要永久删除这条对话记录吗？此操作无法撤销。</p>
+            <div style="display:flex; justify-content:flex-end; gap:12px;">
+                <button class="btn btn-secondary" onclick="closeConfirmModal()">取消</button>
+                <button class="btn btn-primary" style="background:#ef4444;" onclick="confirmDelete()">确定删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Actions Dropdown -->
+    <div class="session-dropdown" id="sessionDropdown">
+        <div class="dropdown-item" id="dropdownPinBtn">置顶</div>
+        <div class="dropdown-item" id="dropdownRenameBtn">重命名</div>
+        <div class="dropdown-item danger" id="dropdownDeleteBtn">删除</div>
+    </div>
+
+    <script>
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            highlight: function(code, lang) {
+                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                return hljs.highlight(code, { language }).value;
+            }
+        });
+
+        const chatArea = document.getElementById('chatArea');
+        const userInput = document.getElementById('userInput');
+        const sessionList = document.getElementById('sessionList');
+        
+        let currentSession = null;
+        let currentAgent = null;
+
+        let globalAgents = [];
+        let globalSessions = [];
+
+        async function fetchDB() {
+            try {
+                const resA = await fetch('/api/agents');
+                globalAgents = await resA.json();
+                const resS = await fetch('/api/sessions');
+                globalSessions = await resS.json();
+                init();
+            } catch(e) { console.error('Failed to load DB'); }
+        }
+
+        // Data Management
+        function getAgents() { return globalAgents; }
+        function getSessions() { return globalSessions; }
+        
+        function saveSessionToDB(session) {
+            fetch('/api/sessions', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(session)
+            });
+        }
+        function deleteSessionFromDB(id) {
+            fetch(`/api/sessions/${id}`, { method: 'DELETE' });
+        }
+
+        // Initialization
+        function init() {
+            renderSessionList();
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            const agentId = urlParams.get('id');
+            const sessionId = urlParams.get('sessionId');
+
+            if (sessionId) {
+                loadSession(sessionId);
+            } else if (agentId) {
+                startNewSession(agentId);
+            }
+        }
+
+        // Modals
+        function openAgentModal() {
+            const agents = getAgents();
+            const listEl = document.getElementById('agentSelectList');
+            listEl.innerHTML = '';
+            
+            if (agents.length === 0) {
+                listEl.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px;">暂无智能体，请先前往创建</div>';
+            } else {
+                agents.forEach(a => {
+                    const el = document.createElement('div');
+                    el.className = 'agent-select-item';
+                    el.innerHTML = `<div style="font-weight:500;">${a.name}</div><div style="font-size:12px; color:var(--text-muted); margin-top:4px;">${a.desc.substring(0, 30)}...</div>`;
+                    el.onclick = () => { closeAgentModal(); startNewSession(a.id); };
+                    listEl.appendChild(el);
+                });
+            }
+            document.getElementById('agentModal').style.display = 'flex';
+        }
+        function closeAgentModal() { document.getElementById('agentModal').style.display = 'none'; }
+
+        // Sessions
+        function startNewSession(agentId) {
+            const agents = getAgents();
+            const agent = agents.find(a => a.id === agentId);
+            if (!agent) { alert('找不到该智能体'); return; }
+
+            const sessions = getSessions();
+            const emptySessionIdx = sessions.findIndex(s => s.messages.length === 0);
+            let newSession;
+            
+            if (emptySessionIdx > -1) {
+                // Reuse existing empty session
+                newSession = sessions[emptySessionIdx];
+                newSession.agentId = agent.id;
+                newSession.updatedAt = Date.now();
+                sessions.splice(emptySessionIdx, 1);
+                sessions.unshift(newSession);
+            } else {
+                newSession = {
+                    id: Date.now().toString(),
+                    agentId: agent.id,
+                    title: '新对话',
+                    messages: [],
+                    updatedAt: Date.now()
+                };
+                sessions.unshift(newSession);
+            }
+            
+            saveSessionToDB(newSession);
+            
+            window.history.replaceState({}, '', `?sessionId=${newSession.id}`);
+            loadSession(newSession.id);
+            renderSessionList();
+        }
+
+        let activeActionSessionId = null;
+
+        function openRenameModal(sessionId) {
+            activeActionSessionId = sessionId;
+            const session = getSessions().find(s => s.id === sessionId);
+            document.getElementById('renameInput').value = session.title;
+            document.getElementById('renameModal').style.display = 'flex';
+            setTimeout(() => document.getElementById('renameInput').focus(), 100);
+        }
+        function closeRenameModal() { document.getElementById('renameModal').style.display = 'none'; }
+        function saveRename() {
+            const newTitle = document.getElementById('renameInput').value.trim();
+            if (newTitle) {
+                let sessions = getSessions();
+                let session = sessions.find(s => s.id === activeActionSessionId);
+                if (session) {
+                    session.title = newTitle;
+                    saveSessionToDB(session);
+                    renderSessionList();
+                }
+            }
+            closeRenameModal();
+        }
+
+        function openConfirmModal(sessionId) {
+            activeActionSessionId = sessionId;
+            document.getElementById('confirmModal').style.display = 'flex';
+        }
+        function closeConfirmModal() { document.getElementById('confirmModal').style.display = 'none'; }
+        function confirmDelete() {
+            globalSessions = globalSessions.filter(s => s.id !== activeActionSessionId);
+            deleteSessionFromDB(activeActionSessionId);
+            
+            if (currentSession && currentSession.id === activeActionSessionId) {
+                window.history.replaceState({}, '', window.location.pathname);
+                loadSession(null);
+            } else {
+                renderSessionList();
+            }
+            closeConfirmModal();
+        }
+
+        // Dropdown functionality
+        let activeDropdownSessionId = null;
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.session-more-btn') && !e.target.closest('.session-dropdown')) {
+                document.getElementById('sessionDropdown').classList.remove('show');
+            }
+        });
+
+        function toggleDropdown(e, sessionId) {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            const dropdown = document.getElementById('sessionDropdown');
+            const rect = btn.getBoundingClientRect();
+            
+            if (activeDropdownSessionId === sessionId && dropdown.classList.contains('show')) {
+                dropdown.classList.remove('show');
+                return;
+            }
+            
+            activeDropdownSessionId = sessionId;
+            const session = getSessions().find(s => s.id === sessionId);
+            
+            document.getElementById('dropdownPinBtn').innerText = session.isPinned ? '取消置顶' : '置顶';
+            document.getElementById('dropdownPinBtn').onclick = () => { togglePin(sessionId); dropdown.classList.remove('show'); };
+            document.getElementById('dropdownRenameBtn').onclick = () => { openRenameModal(sessionId); dropdown.classList.remove('show'); };
+            document.getElementById('dropdownDeleteBtn').onclick = () => { openConfirmModal(sessionId); dropdown.classList.remove('show'); };
+            
+            dropdown.style.top = `${rect.bottom + 4}px`;
+            dropdown.style.left = `${rect.left - 80}px`; 
+            dropdown.classList.add('show');
+        }
+
+        function togglePin(sessionId) {
+            let sessions = getSessions();
+            let idx = sessions.findIndex(s => s.id === sessionId);
+            if (idx > -1) {
+                sessions[idx].isPinned = !sessions[idx].isPinned;
+                saveSessionToDB(sessions[idx]);
+                renderSessionList();
+            }
+        }
+
+        function loadSession(sessionId) {
+            const sessions = getSessions();
+            currentSession = sessions.find(s => s.id === sessionId);
+            if (!currentSession) {
+                document.getElementById('emptyState').style.display = 'flex';
+                document.getElementById('chatHeader').style.display = 'none';
+                document.getElementById('chatArea').style.display = 'none';
+                document.getElementById('inputArea').style.display = 'none';
+                return;
+            }
+
+            const agents = getAgents();
+            currentAgent = agents.find(a => a.id === currentSession.agentId);
+            if (!currentAgent) { alert('该会话关联的智能体已被删除'); return; }
+
+            // UI Setup
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('chatHeader').style.display = 'flex';
+            document.getElementById('chatArea').style.display = 'flex';
+            document.getElementById('inputArea').style.display = 'block';
+            document.getElementById('agentName').innerText = currentAgent.name;
+            document.getElementById('agentBadge').innerText = currentAgent.type || '普通型';
+            
+            chatArea.innerHTML = '';
+            
+            if (currentSession.messages.length === 0) {
+                appendMessage('sys', `你好！我是 **${currentAgent.name}**，我已经准备好了。`);
+            } else {
+                currentSession.messages.forEach(m => {
+                    appendMessage(m.role === 'user' ? 'user' : 'sys', m.content);
+                });
+            }
+            
+            renderSessionList();
+        }
+
+        function renderSessionList() {
+            const sessions = getSessions();
+            const agents = getAgents();
+            sessionList.innerHTML = '';
+            
+            sessions.sort((a,b) => {
+                if (a.isPinned && !b.isPinned) return -1;
+                if (!a.isPinned && b.isPinned) return 1;
+                return b.updatedAt - a.updatedAt;
+            }).forEach(s => {
+                const agent = agents.find(a => a.id === s.agentId);
+                const agentName = agent ? agent.name : '未知智能体';
+                const pinIcon = s.isPinned ? '<svg style="color:var(--accent); margin-right:4px; vertical-align:middle; padding-bottom:2px;" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M16 11V7a4 4 0 0 0-8 0v4L6 17h12l-2-6zM12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/></svg>' : '';
+                
+                const el = document.createElement('div');
+                el.className = `session-item ${currentSession && currentSession.id === s.id ? 'active' : ''}`;
+                el.innerHTML = `
+                    <div class="session-title">${pinIcon}${s.title}</div>
+                    <div class="session-agent">${agentName}</div>
+                    <button class="session-more-btn" onclick="toggleDropdown(event, '${s.id}')" title="更多操作">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/></svg>
+                    </button>
+                `;
+                el.onclick = () => {
+                    window.history.replaceState({}, '', `?sessionId=${s.id}`);
+                    loadSession(s.id);
+                };
+                sessionList.appendChild(el);
+            });
+        }
+
+        function autoResize(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = textarea.scrollHeight + 'px';
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function appendMessage(role, text) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message-wrapper';
+            const msg = document.createElement('div');
+            msg.className = `message msg-${role}`;
+            
+            if (role === 'sys') {
+                msg.innerHTML = marked.parse(text);
+            } else {
+                msg.innerHTML = text.replace(/\n/g, '<br>');
+            }
+            
+            wrapper.appendChild(msg);
+            chatArea.appendChild(wrapper);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text || !currentAgent || !currentSession) return;
+            
+            appendMessage('user', text);
+            currentSession.messages.push({ role: 'user', content: text });
+            
+            // Generate title if it's the first user message
+            if (currentSession.messages.length === 1) {
+                currentSession.title = text.substring(0, 15) + (text.length > 15 ? '...' : '');
+            }
+            
+            userInput.value = '';
+            autoResize(userInput);
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'message-wrapper';
+            const msg = document.createElement('div');
+            msg.className = 'message msg-sys';
+            wrapper.appendChild(msg);
+            chatArea.appendChild(wrapper);
+            chatArea.scrollTop = chatArea.scrollHeight;
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        systemPrompt: currentAgent.systemPrompt || currentAgent.desc || "你是一个有用的人工智能助手。", 
+                        messages: currentSession.messages,
+                        stream: true
+                    })
+                });
+                
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                let fullText = '';
+                let buffer = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); 
+                    
+                    for (let line of lines) {
+                        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                fullText += data.content;
+                                msg.innerHTML = marked.parse(fullText);
+                                chatArea.scrollTop = chatArea.scrollHeight;
+                            } catch (e) {
+                                console.error('Error parsing chunk:', line);
+                            }
+                        }
+                    }
+                }
+                
+                if (buffer.startsWith('data: ') && buffer !== 'data: [DONE]') {
+                    try {
+                        const data = JSON.parse(buffer.slice(6));
+                        fullText += data.content;
+                        msg.innerHTML = marked.parse(fullText);
+                    } catch (e) {}
+                }
+                
+                currentSession.messages.push({ role: 'assistant', content: fullText });
+                currentSession.updatedAt = Date.now();
+                
+                saveSessionToDB(currentSession);
+                
+                renderSessionList();
+                
+            } catch (e) {
+                msg.innerHTML = '服务器请求失败，请检查网络。';
+            }
+        }
+
+        fetchDB();
+    </script>
+</body>
+</html>
