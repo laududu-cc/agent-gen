@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  casdoor-db:
+    image: mysql:8.0
+    container_name: casdoor-db
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: casdoor
+      MYSQL_USER: casdoor
+      MYSQL_PASSWORD: casdoor_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "casdoor", "-pcasdoor_password"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  casdoor:
+    image: casbin/casdoor:latest
+    container_name: casdoor
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - RUNNING_IN_DOCKER=true
+    volumes:
+      - ./conf/app.conf:/conf/app.conf
+    depends_on:
+      casdoor-db:
+        condition: service_healthy
+
+volumes:
+  mysql_data:

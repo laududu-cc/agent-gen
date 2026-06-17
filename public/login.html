@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智戎 - 身份认证</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #09090b;
+            --panel-bg: rgba(24, 24, 27, 0.65);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #a1a1aa;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --accent-glow: rgba(99, 102, 241, 0.15);
+            --input-bg: rgba(0, 0, 0, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Ambient subtle blur background blobs */
+        .ambient-bg {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            overflow: hidden;
+            z-index: -1;
+        }
+        .blob {
+            position: absolute;
+            filter: blur(120px);
+            opacity: 0.45;
+            border-radius: 50%;
+            animation: float 12s infinite ease-in-out alternate;
+        }
+        .blob-1 {
+            top: -10%; left: 15%;
+            width: 40vw; height: 40vw;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, transparent 70%);
+        }
+        .blob-2 {
+            bottom: -10%; right: 15%;
+            width: 45vw; height: 45vw;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+            animation-delay: -6s;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(4%, 6%) scale(1.08); }
+        }
+
+        /* Centered login panel card */
+        .login-card {
+            width: 400px;
+            padding: 40px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+            z-index: 10;
+            transform: translateY(15px);
+            opacity: 0;
+            animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes slideUp {
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        /* Pill tabs toggle switcher */
+        .tabs-container {
+            display: flex;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-color);
+            padding: 4px;
+            border-radius: 10px;
+            margin-bottom: 28px;
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .tab-btn.active {
+            background: var(--accent);
+            color: white;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.2);
+        }
+
+        /* Form fields */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+        .form-group label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+        .input-wrapper {
+            position: relative;
+        }
+        .input-wrapper input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .input-wrapper input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+            background: rgba(0, 0, 0, 0.35);
+        }
+
+        /* Alert Messages */
+        .msg-box {
+            font-size: 13px;
+            text-align: center;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 18px;
+            display: none;
+        }
+        .error-msg {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+        .success-msg {
+            color: #10b981;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        /* Action Buttons */
+        .submit-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+        .submit-btn:hover {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+        }
+        .submit-btn:active {
+            transform: translateY(0);
+        }
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="ambient-bg">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <div class="login-card">
+        <div class="header">
+            <div class="logo">智戎 / AgentForge</div>
+            <div class="subtitle">自然语言 AI 智能体生成平台</div>
+        </div>
+
+        <div class="tabs-container">
+            <button class="tab-btn active" id="tab-login" onclick="toggleMode('login')">登录</button>
+            <button class="tab-btn" id="tab-register" onclick="toggleMode('register')">注册</button>
+        </div>
+
+        <form id="authForm" onsubmit="handleAuthSubmit(event)">
+            <div class="form-group">
+                <label for="usernameInput">用户名</label>
+                <div class="input-wrapper">
+                    <input type="text" id="usernameInput" placeholder="请输入用户名" required autocomplete="username">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="passwordInput">密码</label>
+                <div class="input-wrapper">
+                    <input type="password" id="passwordInput" placeholder="请输入密码" required autocomplete="current-password">
+                </div>
+            </div>
+
+            <div class="form-group" id="confirmGroup" style="display: none;">
+                <label for="confirmInput">确认密码</label>
+                <div class="input-wrapper">
+                    <input type="password" id="confirmInput" placeholder="请再次输入密码" autocomplete="new-password">
+                </div>
+            </div>
+
+            <div class="msg-box error-msg" id="errorMsgBox"></div>
+            <div class="msg-box success-msg" id="successMsgBox"></div>
+
+            <button type="submit" class="submit-btn" id="submitBtn">登录进入</button>
+        </form>
+    </div>
+
+    <script>
+        // Resolve backend URL
+        const API_BASE = (window.location.protocol === 'file:' || window.location.port === '5500' || window.location.port === '5173')
+            ? 'http://127.0.0.1:8000'
+            : '';
+
+        let currentMode = 'login';
+
+        function toggleMode(mode) {
+            currentMode = mode;
+            
+            // UI elements
+            const tabLogin = document.getElementById('tab-login');
+            const tabRegister = document.getElementById('tab-register');
+            const confirmGroup = document.getElementById('confirmGroup');
+            const confirmInput = document.getElementById('confirmInput');
+            const submitBtn = document.getElementById('submitBtn');
+            
+            // Reset message boxes
+            document.getElementById('errorMsgBox').style.display = 'none';
+            document.getElementById('successMsgBox').style.display = 'none';
+
+            if (mode === 'login') {
+                tabLogin.classList.add('active');
+                tabRegister.classList.remove('active');
+                confirmGroup.style.display = 'none';
+                confirmInput.removeAttribute('required');
+                submitBtn.innerText = '登录进入';
+            } else {
+                tabLogin.classList.remove('active');
+                tabRegister.classList.add('active');
+                confirmGroup.style.display = 'flex';
+                confirmInput.setAttribute('required', 'required');
+                submitBtn.innerText = '注册账号';
+            }
+        }
+
+        async function handleAuthSubmit(e) {
+            e.preventDefault();
+            
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const confirmPassword = document.getElementById('confirmInput').value;
+            
+            const errorBox = document.getElementById('errorMsgBox');
+            const successBox = document.getElementById('successMsgBox');
+            const submitBtn = document.getElementById('submitBtn');
+
+            errorBox.style.display = 'none';
+            successBox.style.display = 'none';
+
+            if (!username || !password) {
+                errorBox.innerText = '用户名和密码不能为空';
+                errorBox.style.display = 'block';
+                return;
+            }
+
+            submitBtn.disabled = true;
+
+            try {
+                if (currentMode === 'login') {
+                    // Call Direct Login API
+                    const res = await fetch(`${API_BASE}/api/auth/login`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || '登录失败，请检查用户名或密码');
+                    }
+
+                    localStorage.setItem('token', data.token);
+                    localStorage.setItem('username', data.username);
+                    
+                    window.location.href = 'index.html';
+                } else {
+                    // Registration Validation
+                    if (password !== confirmPassword) {
+                        throw new Error('两次输入的密码不一致');
+                    }
+                    if (password.length < 6) {
+                        throw new Error('密码长度不能少于 6 位');
+                    }
+
+                    // Call Registration API
+                    const res = await fetch(`${API_BASE}/api/auth/register`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+
+                    const data = await res.json();
+                    if (!res.ok) {
+                        throw new Error(data.detail || '注册失败，该用户名可能已被占用');
+                    }
+
+                    successBox.innerText = '注册成功！已自动切换到登录模式';
+                    successBox.style.display = 'block';
+                    
+                    // Clear inputs and toggle back to login mode
+                    document.getElementById('passwordInput').value = '';
+                    document.getElementById('confirmInput').value = '';
+                    toggleMode('login');
+                    
+                    // Pre-fill the username
+                    document.getElementById('usernameInput').value = username;
+                }
+            } catch (err) {
+                errorBox.innerText = err.message;
+                errorBox.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+            }
+        }
+
+        // If already authenticated, redirect straight to index
+        if (localStorage.getItem('token')) {
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>

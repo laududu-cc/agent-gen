@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>身份认证中 - 智戎</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #030712;
+            color: #f3f4f6;
+            font-family: 'Outfit', sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+            margin: 0;
+            overflow: hidden;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #6366f1;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .message {
+            font-size: 16px;
+            font-weight: 500;
+            color: #9ca3af;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="spinner"></div>
+    <div class="message" id="message">正在进行安全身份认证，请稍候...</div>
+
+    <script>
+        const API_BASE = (window.location.protocol === 'file:' || window.location.port === '5500' || window.location.port === '5173')
+            ? 'http://127.0.0.1:8000'
+            : '';
+
+        async function handleCallback() {
+            const messageEl = document.getElementById('message');
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const state = urlParams.get('state');
+
+            if (!code) {
+                messageEl.innerText = "认证码无效，正在返回登录页...";
+                setTimeout(() => { window.location.href = 'login.html'; }, 2000);
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/auth/callback`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, state })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.detail || "Authentication exchange failed");
+                }
+
+                const data = await res.json();
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('username', data.username);
+                
+                messageEl.innerText = "登录验证成功！正在进入系统...";
+                setTimeout(() => { window.location.href = 'index.html'; }, 1000);
+
+            } catch (e) {
+                console.error(e);
+                messageEl.style.color = '#ef4444';
+                messageEl.innerText = "身份校验失败：" + (e.message || "未知错误，正在返回登录页...");
+                setTimeout(() => { window.location.href = 'login.html'; }, 3000);
+            }
+        }
+
+        handleCallback();
+    </script>
+</body>
+</html>

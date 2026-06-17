@@ -329,8 +329,14 @@
             </a>
             <div class="page-title">智能体管理</div>
         </div>
-        <div style="font-size: 14px; color: var(--text-muted);">
-            智戎 智能体生成器 - 管理控制台
+        <div style="display: flex; align-items: center; gap: 20px; font-size: 14px; color: var(--text-muted);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <span>👤</span>
+                <span id="currentUserName">加载中...</span>
+            </div>
+            <button onclick="logout()" style="background: transparent; border: none; color: #ef4444; cursor: pointer; font-size: 13px; font-weight: 500;">
+                退出登录
+            </button>
         </div>
     </nav>
 
@@ -348,10 +354,44 @@
     </div>
 
     <script>
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        const API_BASE = (window.location.protocol === 'file:' || window.location.port === '5500' || window.location.port === '5173')
+            ? 'http://127.0.0.1:8000'
+            : '';
+
+        async function authFetch(url, options = {}) {
+            const headers = options.headers || {};
+            headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(url, { ...options, headers });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('username');
+                window.location.href = 'login.html';
+            }
+            return res;
+        }
+
+        // Set logged-in username in UI
+        window.addEventListener('DOMContentLoaded', () => {
+            const username = localStorage.getItem('username') || 'Unknown';
+            const userEl = document.getElementById('currentUserName');
+            if (userEl) userEl.innerText = username;
+        });
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = 'login.html';
+        }
+
         let globalAgents = [];
         async function fetchAgentsFromDB() {
             try {
-                const res = await fetch('/api/agents');
+                const res = await authFetch(`${API_BASE}/api/agents`);
                 globalAgents = await res.json();
                 renderGrid();
             } catch(e) { console.error('Failed to load agents'); }
@@ -421,7 +461,7 @@
                 card.style.transform = 'scale(0.95)';
                 setTimeout(() => card.remove(), 300);
                 
-                fetch(`/api/agents/${id}`, { method: 'DELETE' });
+                authFetch(`${API_BASE}/api/agents/${id}`, { method: 'DELETE' });
             }
         }
 
@@ -452,7 +492,7 @@
                 globalAgents[idx].desc = newPrompt.substring(0, 100) + '...';
                 renderGrid();
                 closeSettings();
-                fetch('/api/agents', {
+                authFetch(`${API_BASE}/api/agents`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(globalAgents[idx])
                 });

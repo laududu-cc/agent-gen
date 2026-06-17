@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+pydantic
+openai
+httpx
+pyjwt
+pymysql
+cryptography

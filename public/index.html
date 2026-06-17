@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智戎 - 智能体生成器</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/styles/atom-one-dark.css">
-    <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.7.0/highlight.min.js"></script>
+    <script src="lib/marked.min.js"></script>
+    <link rel="stylesheet" href="lib/atom-one-dark.css">
+    <script src="lib/highlight.min.js"></script>
     <style>
         :root {
             --bg-color: #09090b;
@@ -314,6 +314,7 @@
             gap: 24px;
             scroll-behavior: smooth;
             align-items: center;
+            width: 100%;
         }
         .chat-container::-webkit-scrollbar { width: 6px; }
         .chat-container::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
@@ -382,18 +383,20 @@
 
         /* Input Area */
         .input-area {
-            padding: 24px 0;
+            padding: 24px 20px;
             background: linear-gradient(to top, var(--bg-color) 80%, transparent);
             transition: all 0.5s;
             display: flex; justify-content: center;
+            width: 100%;
         }
-        .hero-state + .input-area {
+        .chat-container:has(.hero-state:not(.hidden)) + .input-area {
             position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, 20px);
+            transform: translate(-50%, 60px);
             width: 100%; max-width: 800px; padding: 0 20px; background: transparent;
+            z-index: 10;
         }
         .input-box {
-            width: 100%; max-width: 800px; margin: 0 20px;
+            width: 100%; max-width: 800px; margin: 0;
             position: relative; background: var(--panel-bg);
             border: 1px solid var(--border-color); border-radius: 24px;
             padding: 8px 16px; display: flex; align-items: flex-end;
@@ -459,6 +462,15 @@
             <!-- Agents will be injected here from localStorage -->
         </div>
         <div class="sidebar-footer">
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 4px 12px 4px; border-bottom: 1px solid var(--border-color); margin-bottom: 12px; font-size: 13px; color: var(--text-muted);">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 16px;">👤</span>
+                    <span id="currentUserName">加载中...</span>
+                </div>
+                <button onclick="logout()" style="background: transparent; border: none; color: #ef4444; cursor: pointer; display: flex; align-items: center; font-size: 12px; font-weight: 500;" title="退出登录">
+                    退出
+                </button>
+            </div>
             <a href="manage.html" class="manage-page-btn">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
                 前往管理控制台
@@ -542,6 +554,40 @@
     </div>
 
     <script>
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        const API_BASE = (window.location.protocol === 'file:' || window.location.port === '5500' || window.location.port === '5173')
+            ? 'http://127.0.0.1:8000'
+            : '';
+
+        async function authFetch(url, options = {}) {
+            const headers = options.headers || {};
+            headers['Authorization'] = `Bearer ${token}`;
+            const res = await fetch(url, { ...options, headers });
+            if (res.status === 401) {
+                localStorage.removeItem('token');
+                localStorage.removeItem('username');
+                window.location.href = 'login.html';
+            }
+            return res;
+        }
+
+        // Set logged-in username in UI
+        window.addEventListener('DOMContentLoaded', () => {
+            const username = localStorage.getItem('username') || 'Unknown';
+            const userEl = document.getElementById('currentUserName');
+            if (userEl) userEl.innerText = username;
+        });
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = 'login.html';
+        }
+
         const chatArea = document.getElementById('chatArea');
         const userInput = document.getElementById('userInput');
         const hero = document.getElementById('hero');
@@ -573,7 +619,7 @@
             globalAgents = globalAgents.filter(a => a.id !== activeAgentId);
             renderSidebarAgents();
             closeConfirmModal();
-            fetch(`/api/agents/${activeAgentId}`, { method: 'DELETE' });
+            authFetch(`${API_BASE}/api/agents/${activeAgentId}`, { method: 'DELETE' });
         }
 
         function renameAgent(id) {
@@ -592,7 +638,7 @@
                 if (idx > -1) {
                     globalAgents[idx].name = newName;
                     renderSidebarAgents();
-                    fetch('/api/agents', {
+                    authFetch(`${API_BASE}/api/agents`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(globalAgents[idx])
                     });
@@ -619,7 +665,7 @@
         
         async function fetchAgentsFromDB() {
             try {
-                const res = await fetch('/api/agents');
+                const res = await authFetch(`${API_BASE}/api/agents`);
                 globalAgents = await res.json();
                 renderSidebarAgents();
             } catch(e) { console.error('Failed to load agents'); }
@@ -632,7 +678,7 @@
         function saveAgent(agent) {
             globalAgents.unshift(agent);
             renderSidebarAgents();
-            fetch('/api/agents', {
+            authFetch(`${API_BASE}/api/agents`, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(agent)
             });
@@ -662,6 +708,9 @@
                     </div>
                     <div class="${badgeClass}">${agent.type}</div>
                 `;
+                el.onclick = () => {
+                    window.location.href = `test.html?id=${agent.id}`;
+                };
                 listEl.appendChild(el);
             });
         }
@@ -758,7 +807,7 @@
                 let fullContent = '';
 
                 try {
-                    const response = await fetch('/api/create-agent', {
+                    const response = await authFetch(`${API_BASE}/api/create-agent`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ messages: creationMessages, stream: true })
